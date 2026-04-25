@@ -1,146 +1,42 @@
 import streamlit as st
 import google.generativeai as genai
-import time
 
-# =========================
-# CONFIG
-# =========================
-st.set_page_config(page_title="AI Phóng Viên Chat", layout="wide")
+st.set_page_config(page_title="AI Phóng Viên 2026", layout="wide")
 
-# =========================
-# SESSION STATE
-# =========================
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "is_running" not in st.session_state:
-    st.session_state.is_running = False
-
-# =========================
-# SIDEBAR
-# =========================
 with st.sidebar:
     st.header("⚙️ Cấu hình")
-
-    api_key = st.text_input("Google API Key", type="password")
-
-    selected_model = ""
-
+    api_key = st.text_input("Nhập API Key mới", type="password")
+    # Tự động lấy danh sách model để tránh lỗi 404
+    model_name = "models/gemini-1.5-flash" 
     if api_key:
         try:
             genai.configure(api_key=api_key)
+            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            model_name = st.selectbox("Chọn Model", models if models else ["models/gemini-1.5-flash"])
+        except:
+            st.error("Key bị Google chặn tạm thời. Hãy thử Key mới!")
 
-            models = genai.list_models()
-            available_models = [
-                m.name for m in models
-                if hasattr(m, "supported_generation_methods")
-                and any("generate" in method.lower() for method in m.supported_generation_methods)
-            ]
+st.title("📰 Phóng Viên AI: Biên Tập 5W1H")
 
-            # ưu tiên flash
-            preferred = [m for m in available_models if "flash" in m.lower()]
-            if preferred:
-                available_models = preferred
+data = st.text_area("Nhập thông tin (Hội nghị, Kinh tế, Xã hội...)", height=250)
 
-            if available_models:
-                selected_model = st.selectbox("Model", available_models)
-
-        except Exception as e:
-            st.error(f"Lỗi API key: {e}")
-
-    st.divider()
-    if st.button("🧹 Xoá hội thoại"):
-        st.session_state.messages = []
-
-# =========================
-# HEADER
-# =========================
-st.title("📰 AI Phóng Viên Chat")
-st.caption("Trải nghiệm mượt như ChatGPT")
-
-# =========================
-# HIỂN THỊ CHAT
-# =========================
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# =========================
-# INPUT
-# =========================
-user_input = st.chat_input("Nhập nội dung bài báo...")
-
-# =========================
-# HANDLE CHAT
-# =========================
-if user_input:
-
-    if not api_key:
-        st.error("Nhập API key trước")
-        st.stop()
-
-    if not selected_model:
-        st.error("Chưa chọn model")
-        st.stop()
-
-    if st.session_state.is_running:
-        st.warning("⏳ Đang xử lý...")
-        st.stop()
-
-    # lưu user message
-    st.session_state.messages.append({
-        "role": "user",
-        "content": user_input
-    })
-
-    # hiển thị user message
-    with st.chat_message("user"):
-        st.markdown(user_input)
-
-    st.session_state.is_running = True
-
-    try:
-        model = genai.GenerativeModel(model_name=selected_model)
-
-        # prompt chuẩn báo chí
-        prompt = f"""
-Bạn là nhà báo chuyên nghiệp.
-
-Viết bài báo từ nội dung sau:
-{user_input}
-
-Yêu cầu:
-- Theo cấu trúc 5W1H
-- Có tiêu đề
-- 300-500 từ
-- Văn phong báo chí
-"""
-
-        # placeholder cho streaming
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_text = ""
-
-            response = model.generate_content(prompt, stream=True)
-
-            for chunk in response:
-                if hasattr(chunk, "text") and chunk.text:
-                    for char in chunk.text:
-                        full_text += char
-                        message_placeholder.markdown(full_text)
-                        time.sleep(0.005)
-
-        # lưu assistant message
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": full_text
-        })
-
-    except Exception as e:
-        if "429" in str(e):
-            st.error("🚫 Quá giới hạn, đợi ~60s rồi thử lại")
-        else:
-            st.error(str(e))
-
-    finally:
-        st.session_state.is_running = False
+if st.button("🚀 XUẤT BẢN BÀI VIẾT"):
+    if not api_key or not data:
+        st.error("Vui lòng điền đủ Key và Nội dung!")
+    else:
+        with st.spinner("Đang biên tập văn phong báo chí cao cấp..."):
+            try:
+                model = genai.GenerativeModel(model_name)
+                # Prompt ép cấu trúc 5W1H và ngôn từ chuyên nghiệp
+                prompt = f"""Viết bài báo chuyên nghiệp từ dữ liệu: {data}. 
+                YÊU CẦU: 
+                1. Cấu trúc 5W1H đầy đủ. 
+                2. Tiêu đề sắc sảo, nội dung mạch lạc, giàu cảm xúc. 
+                3. Sử dụng từ ngữ báo chí như: 'thay da đổi thịt', 'điểm sáng', 'tinh thần khẩn trương'. 
+                Viết bằng tiếng Việt."""
+                
+                response = model.generate_content(prompt)
+                st.markdown("### Tác phẩm hoàn chỉnh:")
+                st.write(response.text)
+            except Exception as e:
+                st.error("Google đang quá tải. Đợi đúng 60 giây hãy bấm lại!")
