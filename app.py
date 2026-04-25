@@ -1,153 +1,93 @@
-import streamlit as st
-import google.generativeai as genai
+import os
 import time
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import google.generativeai as genai
+from dotenv import load_dotenv
 
-# ========================
-# CONFIG UI
-# ========================
-st.set_page_config(page_title="AI Phóng Viên 5W1H", layout="wide")
+# ===== LOAD ENV =====
+load_dotenv()
+API_KEY = os.getenv("GEMINI_API_KEY")
 
-# ========================
-# SESSION (chống spam)
-# ========================
-if "last_click" not in st.session_state:
-    st.session_state.last_click = 0
+if not API_KEY:
+    raise ValueError("Thiếu GEMINI_API_KEY trong .env")
 
-# ========================
-# SIDEBAR
-# ========================
-with st.sidebar:
-    st.header("⚙️ Trung tâm điều hành")
-    api_key = st.text_input("Nhập Google API Key", type="password")
+genai.configure(api_key=API_KEY)
 
-    selected_model = ""
+MODEL_NAME = "models/gemini-2.5-flash"
 
-    if api_key:
+app = FastAPI()
+
+# ===== MEMORY STORE =====
+last_request_time = {}
+cache = {}
+
+COOLDOWN = 15  # giây
+
+# ===== REQUEST MODEL =====
+class RequestData(BaseModel):
+    user_id: str
+    topic: str
+    content: str
+    style: str
+
+# ===== AI CALL (retry) =====
+def call_ai(prompt, retries=3):
+    model = genai.GenerativeModel(MODEL_NAME)
+    for i in range(retries):
         try:
-            genai.configure(api_key=api_key)
-
-            models = genai.list_models()
-
-            # Lọc model an toàn
-            available_models = [
-                m.name for m in models
-                if hasattr(m, "supported_generation_methods")
-                and any("generate" in method.lower() for method in m.supported_generation_methods)
-            ]
-
-            if not available_models:
-                st.error("Không tìm thấy model phù hợp.")
-            else:
-                # Ưu tiên Flash (tránh lỗi quota)
-                preferred = [m for m in available_models if "flash" in m.lower()]
-                if preferred:
-                    available_models = preferred
-
-                selected_model = st.selectbox("Chọn Model AI", available_models)
-
+            return model.generate_content(prompt)
         except Exception as e:
-            st.error(f"API Key lỗi hoặc bị giới hạn: {str(e)}")
+            if "429" in str(e):
+                time.sleep(5)
+            else:
+                raise e
+    return None
 
-# ========================
-# MAIN UI
-# ========================
-st.title("📰 Phóng Viên AI: Biên Tập Viên 5W1H")
-st.caption("Chuyên sâu Hội nghị - Kinh tế - Xã hội vùng biên")
+# ===== API =====
+@app.post("/generate")
+def generate(data: RequestData):
+    now = time.time()
 
-col1, col2 = st.columns([1, 1.2])
+    # ===== RATE LIMIT =====
+    if data.user_id in last_request_time:
+        if now - last_request_time[data.user_id] < COOLDOWN:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Đợi {int(COOLDOWN - (now - last_request_time[data.user_id]))}s"
+            )
 
-# ========================
-# INPUT
-# ========================
-with col1:
-    st.markdown("### 📥 Dữ liệu tác nghiệp")
+    last_request_time[data.user_id] = now
 
-    topic = st.selectbox(
-        "Chủ đề bài viết",
-        ["Hội nghị & Sự kiện", "Kinh tế - Phát triển", "Xã hội & Dân sinh", "Gương sáng Đoàn thể"]
-    )
+    # ===== CACHE =====
+    cache_key = f"{data.topic}-{data.content}-{data.style}"
+    if cache_key in cache:
+        return {"result": cache[cache_key], "cached": True}
 
-    raw_input = st.text_area(
-        "Nhập thông tin thô (Ai, cái gì, ở đâu, khi nào...)",
-        height=300,
-        placeholder="Ví dụ: Hội nghị sơ kết 737, mô hình lúa nước Ea Súp..."
-    )
+    # ===== PROMPT =====
+    prompt = f"""
+Bạn là nhà báo chuyên nghiệp.
 
-    style = st.select_slider(
-        "Sắc thái",
-        options=["Trang trọng", "Mạch lạc", "Truyền cảm hứng"]
-    )
+Chủ đề: {data.topic}
 
-    btn_generate = st.button("🚀 XUẤT BẢN BÀI VIẾT")
+Dữ liệu:
+{data.content}
 
-# ========================
-# OUTPUT
-# ========================
-with col2:
-    st.markdown("### 📜 Tác phẩm hoàn chỉnh")
-
-    if btn_generate:
-        # chống spam click
-        now = time.time()
-        if now - st.session_state.last_click < 5:
-            st.warning("⏳ Đừng bấm quá nhanh, đợi vài giây nhé!")
-            st.stop()
-        st.session_state.last_click = now
-
-        # validate input
-        if not api_key:
-            st.error("Vui lòng nhập API Key.")
-            st.stop()
-
-        if not selected_model:
-            st.error("Không có model hợp lệ.")
-            st.stop()
-
-        if not raw_input.strip():
-            st.warning("Hãy nhập dữ liệu đầu vào.")
-            st.stop()
-
-        # ========================
-        # GENERATE
-        # ========================
-        with st.spinner("🧠 AI đang viết bài..."):
-            try:
-                model = genai.GenerativeModel(model_name=selected_model)
-
-                prompt = f"""
-Bạn là một nhà báo chuyên nghiệp.
-
-Viết bài báo chủ đề: {topic}
-
-Dữ liệu đầu vào:
-{raw_input}
-
-YÊU CẦU:
-- Viết theo cấu trúc 5W1H rõ ràng (Ai, Cái gì, Ở đâu, Khi nào, Tại sao, Như thế nào)
-- Có tiêu đề hấp dẫn
-- Độ dài: 300-500 từ
-- Không lặp ý, không lan man
-- Văn phong: {style}
-- Có cảm xúc báo chí (trang trọng, sinh động)
+Yêu cầu:
+- Viết theo cấu trúc 5W1H
+- 300-500 từ
+- Có tiêu đề
+- Văn phong: {data.style}
 """
 
-                response = model.generate_content(prompt)
+    response = call_ai(prompt)
 
-                # kiểm tra response
-                if response and getattr(response, "text", None):
-                    result = response.text
-                    st.markdown(result)
+    if not response or not getattr(response, "text", None):
+        raise HTTPException(status_code=500, detail="AI không trả dữ liệu")
 
-                    st.download_button(
-                        "📥 Tải bản thảo",
-                        result,
-                        file_name="bai_bao_5w1h.txt"
-                    )
-                else:
-                    st.error("AI không trả về nội dung.")
+    result = response.text
 
-            except Exception as e:
-                if "429" in str(e):
-                    st.error("🚫 Quá giới hạn (5 request/phút). Đợi ~60s rồi thử lại.")
-                else:
-                    st.error(f"❌ Lỗi hệ thống: {str(e)}")
+    # lưu cache
+    cache[cache_key] = result
+
+    return {"result": result, "cached": False}
