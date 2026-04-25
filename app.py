@@ -1,93 +1,70 @@
-import os
-import time
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+import streamlit as st
 import google.generativeai as genai
-from dotenv import load_dotenv
 
-# ===== LOAD ENV =====
-load_dotenv()
-API_KEY = os.getenv("GEMINI_API_KEY")
+# Cấu hình giao diện
+st.set_page_config(page_title="AI Phóng Viên 5W1H", layout="wide")
 
-if not API_KEY:
-    raise ValueError("Thiếu GEMINI_API_KEY trong .env")
-
-genai.configure(api_key=API_KEY)
-
-MODEL_NAME = "models/gemini-2.5-flash"
-
-app = FastAPI()
-
-# ===== MEMORY STORE =====
-last_request_time = {}
-cache = {}
-
-COOLDOWN = 15  # giây
-
-# ===== REQUEST MODEL =====
-class RequestData(BaseModel):
-    user_id: str
-    topic: str
-    content: str
-    style: str
-
-# ===== AI CALL (retry) =====
-def call_ai(prompt, retries=3):
-    model = genai.GenerativeModel(MODEL_NAME)
-    for i in range(retries):
+with st.sidebar:
+    st.header("⚙️ Trung tâm điều hành")
+    api_key = st.text_input("Nhập Google API Key", type="password")
+    
+    # Tự động lấy danh sách model thực tế từ tài khoản của bạn
+    selected_model = ""
+    if api_key:
         try:
-            return model.generate_content(prompt)
-        except Exception as e:
-            if "429" in str(e):
-                time.sleep(5)
-            else:
-                raise e
-    return None
+            genai.configure(api_key=api_key)
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            if available_models:
+                # Ưu tiên hiển thị bản Flash để tránh lỗi 429 Quota
+                selected_model = st.selectbox("Chọn Model AI", available_models, index=0)
+        except Exception:
+            st.error("Key chưa đúng hoặc đang bị Google tạm khóa do nhấn nút quá nhanh.")
 
-# ===== API =====
-@app.post("/generate")
-def generate(data: RequestData):
-    now = time.time()
+st.title("📰 Phóng Viên AI: Biên Tập Viên 5W1H")
+st.caption("Chuyên sâu Hội nghị - Kinh tế - Xã hội vùng biên")
 
-    # ===== RATE LIMIT =====
-    if data.user_id in last_request_time:
-        if now - last_request_time[data.user_id] < COOLDOWN:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Đợi {int(COOLDOWN - (now - last_request_time[data.user_id]))}s"
-            )
+col1, col2 = st.columns([1, 1.2])
 
-    last_request_time[data.user_id] = now
+with col1:
+    st.markdown("### 📥 Dữ liệu tác nghiệp")
+    topic = st.selectbox("Chủ đề bài viết", 
+                          ["Hội nghị & Sự kiện", "Kinh tế - Phát triển", "Xã hội & Dân sinh", "Gương sáng Đoàn thể"])
+    
+    raw_input = st.text_area("Nhập thông tin thô (Ai, cái gì, ở đâu, khi nào...)", height=300,
+                             placeholder="Ví dụ: Hội nghị sơ kết 737, mô hình lúa nước Ea Súp, không khí trang trọng...")
+    
+    style = st.select_slider("Sắc thái", options=["Trang trọng", "Mạch lạc", "Truyền cảm hứng"])
+    
+    btn_generate = st.button("🚀 XUẤT BẢN BÀI VIẾT")
 
-    # ===== CACHE =====
-    cache_key = f"{data.topic}-{data.content}-{data.style}"
-    if cache_key in cache:
-        return {"result": cache[cache_key], "cached": True}
-
-    # ===== PROMPT =====
-    prompt = f"""
-Bạn là nhà báo chuyên nghiệp.
-
-Chủ đề: {data.topic}
-
-Dữ liệu:
-{data.content}
-
-Yêu cầu:
-- Viết theo cấu trúc 5W1H
-- 300-500 từ
-- Có tiêu đề
-- Văn phong: {data.style}
-"""
-
-    response = call_ai(prompt)
-
-    if not response or not getattr(response, "text", None):
-        raise HTTPException(status_code=500, detail="AI không trả dữ liệu")
-
-    result = response.text
-
-    # lưu cache
-    cache[cache_key] = result
-
-    return {"result": result, "cached": False}
+with col2:
+    st.markdown("### 📜 Tác phẩm hoàn chỉnh")
+    if btn_generate:
+        if not api_key:
+            st.error("Vui lòng điền API Key vào thanh bên trái!")
+        elif not raw_input:
+            st.warning("Hãy cung cấp thông tin để AI bắt đầu viết.")
+        else:
+            with st.spinner("Đang biên tập bài viết theo chuẩn 5W1H..."):
+                try:
+                    model = genai.GenerativeModel(model_name=selected_model)
+                    
+                    prompt = f"""
+                    Bạn là một nhà báo lão thành sắc bén. Hãy viết bài báo cho chuyên mục {topic} từ dữ liệu: {raw_input}.
+                    
+                    YÊU CẦU BẮT BUỘC:
+                    1. Cấu trúc 5W1H: Phải thể hiện rõ Ai, Cái gì, Ở đâu, Khi nào, Tại sao và Như thế nào.
+                    2. Tiêu đề: Phải có sức nặng, thu hút người đọc.
+                    3. Ngôn ngữ: Sử dụng phong cách {style}. Dùng các cụm từ báo chí như 'luồng sinh khí mới', 'thay da đổi thịt', 'tinh thần quyết tâm'.
+                    4. Cảm xúc: Tả được không khí khẩn trương, trang trọng của hội trường hoặc sức sống vùng biên.
+                    """
+                    
+                    response = model.generate_content(prompt)
+                    st.markdown(response.text)
+                    st.download_button("📥 Tải bản thảo", response.text, file_name="bai_bao_hoan_chinh.txt")
+                except Exception as e:
+                    if "429" in str(e):
+                        st.error("Google AI đang bận (Quá giới hạn 5 lần/phút). Bạn hãy đợi đúng 60 giây rồi nhấn lại nhé!")
+                    else:
+                        # Dòng này đã được sửa sạch lỗi cú pháp
+                        st.error(f"Lỗi hệ thống: {str(e)}")
