@@ -1,60 +1,68 @@
 import streamlit as st
 import google.generativeai as genai
-import time
 
-st.set_page_config(page_title="AI Phóng Viên Pro", layout="wide")
+st.set_page_config(page_title="AI Phóng Viên 5W1H", layout="wide")
 
-# Sidebar
 with st.sidebar:
-    st.header("⚙️ Cấu hình")
+    st.header("⚙️ Cấu hình chuyên sâu")
     api_key = st.text_input("Nhập Google API Key", type="password")
     
-    available_models = []
-    if api_key:
-        try:
-            genai.configure(api_key=api_key)
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        except:
-            st.error("Key chưa chính xác.")
-    
-    model_choice = st.selectbox("Chọn Model", available_models if available_models else ["Đang đợi Key..."])
+    # Ưu tiên Flash để tốc độ nhanh và ít lỗi quota
+    model_choice = st.selectbox("Chọn Model", ["models/gemini-1.5-flash", "models/gemini-1.5-pro"])
+    st.divider()
+    st.info("Cấu trúc 5W1H giúp bài viết đầy đủ, khách quan và chuyên nghiệp.")
 
-st.title("✍️ AI Phóng Viên: Trợ Lý Tác Nghiệp")
+st.title("📰 Hệ Thống Biên Tập Báo Chí Chuẩn 5W1H")
 
-col1, col2 = st.columns(2)
+col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    raw_data = st.text_area("Nhập nội dung cần viết bài...", height=350, placeholder="Ví dụ: Chiến dịch Giờ Trái Đất 2026 tại Đắk Lắk...")
-    style = st.selectbox("Phong cách", ["Tin nhanh", "Phóng sự", "Gương người tốt việc tốt", "Xã luận"])
-    run_btn = st.button("🚀 Xuất bản ngay")
+    st.subheader("📥 Dữ liệu tác nghiệp")
+    topic = st.selectbox("Loại hình bài viết", 
+                          ["Tin sự kiện/Hội nghị", "Phóng sự kinh tế - xã hội", "Gương sáng điển hình", "Thông tin chuyên đề"])
+    
+    raw_data = st.text_area("Nhập thông tin cốt lõi (Số liệu, thời gian, địa điểm, nhân vật...)", height=300)
+    
+    style = st.radio("Sắc thái ngôn ngữ", 
+                     ["Trang trọng, chính luận", "Truyền cảm hứng, nhân văn", "Sắc bén, trực diện"], horizontal=True)
+    
+    run_btn = st.button("🚀 Khởi tạo bài viết")
 
 with col2:
-    st.subheader("📰 Kết quả")
+    st.subheader("📰 Nội dung xuất bản")
     if run_btn:
         if not api_key:
-            st.error("Vui lòng nhập API Key!")
+            st.error("Thiếu API Key!")
+        elif not raw_data:
+            st.warning("Hãy nhập dữ liệu thô!")
         else:
-            with st.spinner("AI đang xử lý... Nếu quá tải, ứng dụng sẽ tự đợi vài giây."):
+            with st.spinner("Đang cấu trúc bài viết theo sơ đồ 5W1H..."):
                 try:
+                    genai.configure(api_key=api_key)
                     model = genai.GenerativeModel(model_name=model_choice)
-                    prompt = f"Viết bài báo chuyên nghiệp phong cách {style}: {raw_data}. Viết bằng Tiếng Việt, tiêu đề hay."
                     
-                    # Cơ chế thử lại nếu gặp lỗi Quota (429)
-                    success = False
-                    for i in range(3): # Thử tối đa 3 lần
-                        try:
-                            response = model.generate_content(prompt)
-                            st.markdown(response.text)
-                            st.download_button("📥 Tải bài viết", response.text, "bai_bao.txt")
-                            success = True
-                            break
-                        except Exception as e:
-                            if "429" in str(e):
-                                st.warning(f"Hệ thống đang bận, đang thử lại lần {i+1}...")
-                                time.sleep(10) # Đợi 10 giây rồi thử lại
-                            else:
-                                raise e
-                    if not success:
-                        st.error("Google AI đang quá tải. Bạn hãy đợi 1 phút rồi nhấn lại nhé!")
+                    # Prompt ép AI tuân thủ cấu trúc báo chí
+                    prompt = f"""
+                    Bạn là một biên tập viên báo chí cấp cao. Hãy viết một bài báo thuộc loại {topic} dựa trên dữ liệu sau:
+                    {raw_data}
+
+                    YÊU CẦU BẮT BUỘC VỀ CẤU TRÚC 5W1H:
+                    1. Who (Ai): Xác định rõ chủ thể, các bên liên quan, đại biểu, nhân dân...
+                    2. What (Cái gì): Sự kiện gì đã xảy ra? Mục tiêu, nội dung chính là gì?
+                    3. Where (Ở đâu): Địa điểm cụ thể (hội trường, đơn vị, địa phương...).
+                    4. When (Khi nào): Thời gian tổ chức, giai đoạn thực hiện (ví dụ: 2024-2026).
+                    5. Why (Tại sao): Mục đích, ý nghĩa của sự kiện/vấn đề (tại sao phải làm, tầm quan trọng).
+                    6. How (Như thế nào): Cách thức diễn ra, các mô hình cụ thể, kết quả đạt được.
+
+                    YÊU CẦU VỀ NGÔN NGỮ:
+                    - Tiêu đề: Đậm chất báo chí, súc tích, gợi hình.
+                    - Văn phong: {style}. 
+                    - Mạch lạc: Sử dụng ngôn ngữ chuyên ngành (kinh tế, đoàn thể, quân sự) một cách nhuần nhuyễn.
+                    - Cảm xúc: Lồng ghép khéo léo không khí trang trọng của hội trường hoặc sức sống mãnh liệt của các mô hình kinh tế vùng biên.
+                    """
+                    
+                    response = model.generate_content(prompt)
+                    st.markdown(response.text)
+                    st.download_button("📥 Tải bản thảo (.txt)", response.text, "bai_bao_5w1h.txt")
                 except Exception as e:
                     st.error(f"Lỗi: {str(e)}")
