@@ -1,52 +1,39 @@
 import streamlit as st
 import google.generativeai as genai
+import time
 
-# 1. Cấu hình trang
-st.set_page_config(page_title="AI Phóng Viên Pro - 5W1H", layout="wide")
+# Cấu hình giao diện
+st.set_page_config(page_title="AI Phóng Viên 5W1H", layout="wide")
 
-# Tùy chỉnh giao diện bằng CSS để chuyên nghiệp hơn
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #ff4b4b; color: white; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 2. Sidebar - Cấu hình kỹ thuật
 with st.sidebar:
     st.header("⚙️ Trung tâm điều hành")
     api_key = st.text_input("Nhập Google API Key", type="password")
     
-    # Tự động lấy danh sách model khả dụng để tránh lỗi 404
-    selected_model = "models/gemini-1.5-flash" # Mặc định
+    # Tự động lấy danh sách model thực tế từ tài khoản của bạn
+    selected_model = "models/gemini-1.5-flash"
     if api_key:
         try:
             genai.configure(api_key=api_key)
-            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            if models:
-                selected_model = st.selectbox("Chọn Model AI", models)
-        except:
-            st.error("Key chưa đúng hoặc hết hạn.")
-    
-    st.divider()
-    st.caption("Ứng dụng hỗ trợ viết bài chuẩn nghiệp vụ báo chí 5W1H.")
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            if available_models:
+                # Ưu tiên hiển thị bản Flash để tránh lỗi 429
+                selected_model = st.selectbox("Chọn Model AI", available_models, index=0)
+        except Exception:
+            st.error("Key chưa đúng hoặc bị Google tạm khóa.")
 
-# 3. Giao diện chính
 st.title("📰 Phóng Viên AI: Biên Tập Viên 5W1H")
-st.subheader("Chuyên sâu Hội nghị - Kinh tế - Xã hội vùng biên")
+st.caption("Chuyên sâu Hội nghị - Kinh tế - Xã hội vùng biên")
 
 col1, col2 = st.columns([1, 1.2])
 
 with col1:
     st.markdown("### 📥 Dữ liệu tác nghiệp")
     topic = st.selectbox("Chủ đề bài viết", 
-                          ["Hội nghị & Sự kiện chính trị", "Kinh tế - Phát triển vùng biên", "Vấn đề Xã hội & Dân sinh", "Gương sáng & Hoạt động Đoàn thể"])
+                          ["Hội nghị & Sự kiện", "Kinh tế vùng biên", "Xã hội & Dân sinh", "Gương sáng Đoàn thể"])
     
-    raw_input = st.text_area("Nhập thông tin thô (Ai, cái gì, ở đâu, khi nào...)", height=350,
-                             placeholder="Ví dụ: Hội nghị sơ kết 737, mô hình lúa nước Ea Súp, không khí trang trọng, quyết tâm của tuổi trẻ...")
+    raw_input = st.text_area("Nhập thông tin thô (Ai, cái gì, ở đâu, khi nào...)", height=300)
     
-    style = st.select_slider("Sắc thái bài viết", 
-                             options=["Chính luận súc tích", "Mạch lạc khách quan", "Giàu cảm xúc, truyền cảm hứng"])
+    style = st.select_slider("Sắc thái", options=["Trang trọng", "Mạch lạc", "Truyền cảm hứng"])
     
     btn_generate = st.button("🚀 XUẤT BẢN BÀI VIẾT")
 
@@ -54,45 +41,31 @@ with col2:
     st.markdown("### 📜 Tác phẩm hoàn chỉnh")
     if btn_generate:
         if not api_key:
-            st.error("Vui lòng điền API Key vào thanh bên trái!")
+            st.error("Vui lòng điền API Key!")
         elif not raw_input:
-            st.warning("Vui lòng cung cấp dữ liệu để AI làm việc!")
+            st.warning("Hãy cung cấp thông tin để AI viết bài.")
         else:
-            with st.spinner("Biên tập viên AI đang trau chuốt ngôn từ..."):
+            with st.spinner("Đang biên tập bài viết chuẩn 5W1H..."):
                 try:
                     model = genai.GenerativeModel(model_name=selected_model)
                     
-                    # Hệ thống Prompt chuyên sâu
                     prompt = f"""
-                    Bạn là một nhà báo xuất sắc, am hiểu về tình hình kinh tế, chính trị và xã hội vùng biên giới.
-                    Nhiệm vụ: Viết một bài báo chuyên nghiệp về chủ đề {topic} dựa trên dữ liệu: {raw_input}.
+                    Bạn là nhà báo lão thành, viết bài chuẩn cấu trúc 5W1H cho chuyên mục {topic}.
+                    Dữ liệu: {raw_input}. Phong cách: {style}.
                     
-                    YÊU CẦU CẤU TRÚC 5W1H:
-                    - Bài viết phải trả lời đầy đủ: Who (Ai), What (Cái gì), Where (Ở đâu), When (Khi nào), Why (Tại sao), How (Như thế nào).
-                    - Cấu trúc: Tiêu đề -> Sapo (dẫn nhập) -> Nội dung chi tiết -> Kết luận/Lời bình.
-
-                    YÊU CẦU NGÔN NGỮ & VĂN PHONG (Phong cách: {style}):
-                    1. Tiêu đề: Sáng tạo, có sức nặng, sử dụng các động từ mạnh hoặc hình ảnh ẩn dụ.
-                    2. Ngôn từ: Mạch lạc, chuyên nghiệp. Sử dụng các cụm từ báo chí như 'luồng sinh khí mới', 'thay da đổi thịt', 'điểm sáng vùng biên', 'tinh thần khẩn trương'.
-                    3. Cảm xúc: Nếu là hội nghị, cần tả được sự trang trọng, đồng lòng. Nếu là kinh tế, cần tả được sự phát triển sống động, thực tế.
-                    4. Kết nối: Các đoạn văn phải có sự liên kết logic, nhịp điệu câu văn biến hóa.
-
-                    QUY ĐỊNH: Viết hoàn toàn bằng Tiếng Việt, không sa đà vào kể lể, tập trung vào những chi tiết đắt giá.
+                    YÊU CẦU:
+                    1. Tiêu đề: Giật tít hay, đúng trọng tâm.
+                    2. Cấu trúc: Có Sapo, thân bài mạch lạc và kết bài giàu cảm xúc.
+                    3. Ngôn ngữ: Sử dụng từ ngữ báo chí hiện đại như 'sức bật', 'thay da đổi thịt', 'tinh thần quyết tâm'.
+                    4. 5W1H: Phải thể hiện rõ Ai, Cái gì, Ở đâu, Khi nào, Tại sao và Như thế nào.
                     """
                     
                     response = model.generate_content(prompt)
-                    
-                    if response.text:
-                        st.markdown(response.text)
-                        st.download_button("📥 Tải bản thảo về máy", response.text, file_name="bai_bao_hoan_chinh.txt")
+                    st.markdown(response.text)
+                    st.download_button("📥 Tải bài viết", response.text, file_name="bai_bao.txt")
                 except Exception as e:
                     if "429" in str(e):
-                        st.error("Google AI đang bận (Quá giới hạn Free). Bạn vui lòng đợi 60 giây rồi nhấn lại nhé!")
+                        st.error("Google AI đang bận (Quá giới hạn Free). Vui lòng đợi 60 giây rồi nhấn lại!")
                     else:
+                        # Dòng 51 đã được sửa sạch sẽ, không còn văn bản thừa
                         st.error(f"Lỗi: {str(e)}")
-    else:
-        st.info("Nhấn 'Xuất bản ngay' để xem kết quả biên tập.")
-
-# 4. Chân trang
-st.divider()
-st.caption("© 2026 - Công cụ dành cho phóng viên tác nghiệp hiện đại.")
